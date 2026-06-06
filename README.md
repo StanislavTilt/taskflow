@@ -1,58 +1,299 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# TaskFlow API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A Laravel 13 REST API with token-based authentication powered by **Laravel Sanctum**.
+The codebase follows a layered architecture: **Controller → Service → Repository**, with
+contracts (interfaces) bound through dedicated service providers.
 
-## About Laravel
+## Tech Stack
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+| Component      | Version            |
+| -------------- | ------------------ |
+| PHP            | ^8.3               |
+| Laravel        | ^13.8              |
+| Laravel Sanctum| ^4.0               |
+| Database       | SQLite (default)   |
+| Testing        | PHPUnit ^12        |
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+---
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Requirements
 
-## Learning Laravel
+- PHP **8.3+** with the usual Laravel extensions (`pdo_sqlite`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`)
+- [Composer](https://getcomposer.org/)
+- (Optional) Node.js + npm — only needed if you build front-end assets
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+> On Windows the project is set up to run under **Laragon** (`C:\laragon\www\taskflow`),
+> but any environment with PHP + Composer works.
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+---
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+## Getting Started
 
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+### 1. Install dependencies
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+composer install
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+### 2. Environment file
 
-## Contributing
+```bash
+cp .env.example .env
+php artisan key:generate
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### 3. Database
 
-## Code of Conduct
+The project uses **SQLite** out of the box (`DB_CONNECTION=sqlite`). Create the database file
+and run the migrations:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+# create the empty SQLite file (Windows PowerShell)
+New-Item -ItemType File database\database.sqlite
 
-## Security Vulnerabilities
+# or on Linux/macOS
+touch database/database.sqlite
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+php artisan migrate
+```
 
-## License
+> Prefer MySQL? Set the `DB_*` variables in `.env` (`DB_CONNECTION=mysql`, `DB_HOST`,
+> `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`) and re-run `php artisan migrate`.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+### 4. Run the server
+
+```bash
+php artisan serve
+```
+
+The API is now available at **http://127.0.0.1:8000**.
+
+> Shortcut: `composer run dev` starts the server, queue worker, log viewer (Pail) and Vite
+> together via `concurrently`.
+
+### 5. Run tests
+
+```bash
+php artisan test
+# or
+composer test
+```
+
+---
+
+## Authentication
+
+The API uses **Sanctum personal access tokens**. After a successful `register` or `login`
+you receive a `token` in the response. Send it on protected endpoints using the
+`Authorization: Bearer <token>` header.
+
+Always send these headers:
+
+```
+Accept: application/json
+Content-Type: application/json
+```
+
+---
+
+## API Endpoints
+
+Base URL: `http://127.0.0.1:8000/api`
+
+| Method | Endpoint         | Auth          | Throttle      | Description                        |
+| ------ | ---------------- | ------------- | ------------- | ---------------------------------- |
+| POST   | `/auth/register` | Public        | 6 req / min   | Register a new user, returns token |
+| POST   | `/auth/login`    | Public        | 6 req / min   | Log in, returns token              |
+| POST   | `/auth/logout`   | Bearer token  | 6 req / min   | Revoke the current user's tokens   |
+| GET    | `/user`          | Bearer token  | —             | Get the authenticated user         |
+
+---
+
+### 1. Register
+
+`POST /api/auth/register`
+
+**Body parameters**
+
+| Field                   | Type   | Rules                                      |
+| ----------------------- | ------ | ------------------------------------------ |
+| `name`                  | string | required                                   |
+| `email`                 | string | required, valid email, unique in `users`   |
+| `password`              | string | required, min 6, must match confirmation   |
+| `password_confirmation` | string | required, must equal `password`            |
+
+**Request**
+
+```json
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "secret123",
+  "password_confirmation": "secret123"
+}
+```
+
+**Response `200 OK`**
+
+```json
+{
+  "data": {
+    "id": 1,
+    "name": "John Doe",
+    "email": "john@example.com"
+  },
+  "token": "1|aBcDeFgHiJkLmNoPqRsTuVwXyZ..."
+}
+```
+
+**Validation error `422`**
+
+```json
+{
+  "message": "The email has already been taken.",
+  "errors": {
+    "email": ["The email has already been taken."]
+  }
+}
+```
+
+---
+
+### 2. Login
+
+`POST /api/auth/login`
+
+**Body parameters**
+
+| Field      | Type   | Rules                 |
+| ---------- | ------ | --------------------- |
+| `email`    | string | required, valid email |
+| `password` | string | required              |
+
+**Request**
+
+```json
+{
+  "email": "john@example.com",
+  "password": "secret123"
+}
+```
+
+**Response `200 OK`**
+
+```json
+{
+  "data": {
+    "id": 1,
+    "name": "John Doe",
+    "email": "john@example.com"
+  },
+  "token": "2|zYxWvUtSrQpOnMlKjIhGfEdCbA..."
+}
+```
+
+**Invalid credentials `422`**
+
+```json
+{
+  "message": "Неверный email или пароль.",
+  "errors": {
+    "email": ["Неверный email или пароль."]
+  }
+}
+```
+
+---
+
+### 3. Logout
+
+`POST /api/auth/logout`
+
+**Headers**
+
+```
+Authorization: Bearer <token>
+```
+
+Revokes **all** tokens belonging to the authenticated user.
+
+**Response `200 OK`**
+
+```json
+{
+  "message": "Logged out"
+}
+```
+
+---
+
+### 4. Current User
+
+`GET /api/user`
+
+**Headers**
+
+```
+Authorization: Bearer <token>
+```
+
+**Response `200 OK`**
+
+```json
+{
+  "id": 1,
+  "name": "John Doe",
+  "email": "john@example.com",
+  "email_verified_at": null,
+  "created_at": "2026-06-06T18:40:00.000000Z",
+  "updated_at": "2026-06-06T18:40:00.000000Z"
+}
+```
+
+---
+
+## Quick Test with cURL
+
+```bash
+# Register
+curl -X POST http://127.0.0.1:8000/api/auth/register \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"John","email":"john@example.com","password":"secret123","password_confirmation":"secret123"}'
+
+# Login
+curl -X POST http://127.0.0.1:8000/api/auth/login \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"john@example.com","password":"secret123"}'
+
+# Logout (replace TOKEN)
+curl -X POST http://127.0.0.1:8000/api/auth/logout \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer TOKEN"
+```
+
+---
+
+## Project Structure
+
+```
+app/
+├── Contracts/
+│   ├── Repositories/AuthRepositoryInterface.php
+│   └── Services/AuthServiceInterface.php
+├── Http/
+│   ├── Controllers/Api/Auth/AuthController.php
+│   ├── Requests/Auth/{RegisterRequest,LoginRequest}.php
+│   └── Resources/UserResource.php
+├── Repositories/AuthRepository.php
+├── Services/AuthService.php
+└── Providers/{RepositoryServiceProvider,ServiceServiceProvider}.php
+routes/
+└── api.php
+```
+
+- **Controllers** handle HTTP only and delegate to services.
+- **Services** hold business logic (`AuthService`).
+- **Repositories** encapsulate all Eloquent/database access (`AuthRepository`).
+- **Service Providers** bind interfaces to implementations for dependency injection.
