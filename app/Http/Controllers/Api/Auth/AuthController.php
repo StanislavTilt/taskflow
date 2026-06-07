@@ -8,7 +8,6 @@ use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
-use App\Services\AuthService;
 
 class AuthController extends Controller
 {

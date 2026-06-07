@@ -2,8 +2,7 @@
 
 namespace App\Services;
 
-
-use App\Contracts\Repositories\AuthRepositoryInterface;
+use App\Contracts\Repositories\UserRepositoryInterface;
 use App\Contracts\Services\AuthServiceInterface;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
@@ -15,24 +14,24 @@ readonly class AuthService implements AuthServiceInterface
      * Create a new class instance.
      */
     public function __construct(
-        private AuthRepositoryInterface $authRepository,
+        private UserRepositoryInterface $userRepository,
     )
     {
-        //
+
     }
 
     public function register(array $data): User
     {
-        return $this->authRepository->createUser($data);
+        return $this->userRepository->create($data);
     }
     public function login(string $email, string $password): User
     {
-        $user = $this->authRepository->findByEmail($email);
+        $user = $this->userRepository->findByEmail($email);
 
         if(!$user || !Hash::check($password , $user->password))
         {
             throw ValidationException::withMessages([
-                'email' => ['Неверный email или пароль.'],
+                'email' => ['Wrong email or password.'],
             ]);
         }
 
