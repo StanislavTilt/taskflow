@@ -3,7 +3,7 @@
 A Laravel 13 REST API with token-based authentication powered by **Laravel Sanctum**.
 The codebase follows a layered architecture: **Controller → Service → Repository**, with
 contracts (interfaces) bound through dedicated service providers, and authorization handled
-by a **Policy**.
+by **Policies**.
 
 ## Tech Stack
 
@@ -97,8 +97,13 @@ Content-Type: application/json
 
 ### Authorization
 
-User endpoints are protected by a **policy**: a user may only `show`, `update`, or `delete`
-**their own** account. Acting on another user's record returns `403 This action is unauthorized.`
+Resource endpoints are protected by **policies**:
+
+- **Users** — a user may only `show`, `update`, or `delete` **their own** account.
+- **Projects** — a user may only `show`, `update`, or `delete` projects **they own**
+  (`owner_id`). The project list (`GET /project`) returns only the authenticated user's projects.
+
+Acting on a record you don't own returns `403 This action is unauthorized.`
 
 ---
 
@@ -106,16 +111,35 @@ User endpoints are protected by a **policy**: a user may only `show`, `update`, 
 
 Base URL: `http://127.0.0.1:8000/api`
 
-| Method      | Endpoint          | Auth         | Throttle    | Description                        |
-| ----------- | ----------------- | ------------ | ----------- | ---------------------------------- |
-| POST        | `/auth/register`  | Public       | 6 req / min | Register a new user, returns token |
-| POST        | `/auth/login`     | Public       | 6 req / min | Log in, returns token              |
-| POST        | `/auth/logout`    | Bearer token | 6 req / min | Revoke the current user's tokens   |
-| GET         | `/user/{user}`    | Bearer token | —           | Show a user (owner only)           |
-| PUT / PATCH | `/user/{user}`    | Bearer token | —           | Update a user (owner only)         |
-| DELETE      | `/user/{user}`    | Bearer token | —           | Delete a user (owner only)         |
+### Auth
+
+| Method | Endpoint         | Auth         | Throttle    | Description                        |
+| ------ | ---------------- | ------------ | ----------- | ---------------------------------- |
+| POST   | `/auth/register` | Public       | 6 req / min | Register a new user, returns token |
+| POST   | `/auth/login`    | Public       | 6 req / min | Log in, returns token              |
+| POST   | `/auth/logout`   | Bearer token | 6 req / min | Revoke the current user's tokens   |
+
+### Users
+
+| Method      | Endpoint       | Auth         | Description                |
+| ----------- | -------------- | ------------ | -------------------------- |
+| GET         | `/user/{user}` | Bearer token | Show a user (owner only)   |
+| PUT / PATCH | `/user/{user}` | Bearer token | Update a user (owner only) |
+| DELETE      | `/user/{user}` | Bearer token | Delete a user (owner only) |
+
+### Projects
+
+| Method      | Endpoint             | Auth         | Description                            |
+| ----------- | -------------------- | ------------ | -------------------------------------- |
+| GET         | `/project`           | Bearer token | List the authenticated user's projects |
+| POST        | `/project`           | Bearer token | Create a project (owned by caller)     |
+| GET         | `/project/{project}` | Bearer token | Show a project (owner only)            |
+| PUT / PATCH | `/project/{project}` | Bearer token | Update a project (owner only)          |
+| DELETE      | `/project/{project}` | Bearer token | Delete a project (owner only)          |
 
 ---
+
+## Auth
 
 ### 1. Register
 
@@ -235,6 +259,8 @@ Revokes **all** tokens belonging to the authenticated user.
 
 ---
 
+## Users
+
 ### 4. Show User
 
 `GET /api/user/{user}`
@@ -278,12 +304,12 @@ and updated. Allowed only for the account's owner.
 
 **Body parameters**
 
-| Field                   | Type   | Rules                                                       |
-| ----------------------- | ------ | ----------------------------------------------------------- |
-| `name`                  | string | optional, string, max 255                                   |
-| `email`                 | string | optional, valid email, unique in `users` (ignores own row)  |
-| `password`              | string | optional, string, min 8, must match confirmation            |
-| `password_confirmation` | string | required only when `password` is present                    |
+| Field                   | Type   | Rules                                                      |
+| ----------------------- | ------ | ---------------------------------------------------------- |
+| `name`                  | string | optional, string, max 255                                  |
+| `email`                 | string | optional, valid email, unique in `users` (ignores own row) |
+| `password`              | string | optional, string, min 8, must match confirmation           |
+| `password_confirmation` | string | required only when `password` is present                   |
 
 **Request**
 
@@ -314,17 +340,171 @@ and updated. Allowed only for the account's owner.
 
 Deletes the user. Allowed only for the account's owner.
 
-**Headers**
+**Response `200 OK`**
 
+```json
+{
+  "message": "User deleted"
+}
 ```
-Authorization: Bearer <token>
+
+---
+
+## Projects
+
+A **project** belongs to a user (`owner_id`) and has a `status` of `active` or `archived`
+(defaults to `active`). Every project endpoint requires a Bearer token.
+
+**Project object**
+
+```json
+{
+  "id": 1,
+  "name": "Website redesign",
+  "description": "Q3 marketing site",
+  "status": "active",
+  "created_at": "2026-06-08 11:30:00",
+  "updated_at": "2026-06-08 11:30:00"
+}
+```
+
+### 7. List Projects
+
+`GET /api/project`
+
+Returns only the authenticated user's projects.
+
+**Response `200 OK`**
+
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "Website redesign",
+      "description": "Q3 marketing site",
+      "status": "active",
+      "created_at": "2026-06-08 11:30:00",
+      "updated_at": "2026-06-08 11:30:00"
+    }
+  ]
+}
+```
+
+---
+
+### 8. Create Project
+
+`POST /api/project`
+
+The new project is automatically owned by the authenticated user.
+
+**Body parameters**
+
+| Field         | Type   | Rules                        |
+| ------------- | ------ | ---------------------------- |
+| `name`        | string | required, string, max 255    |
+| `description` | string | optional, string, max 1000   |
+
+**Request**
+
+```json
+{
+  "name": "Website redesign",
+  "description": "Q3 marketing site"
+}
+```
+
+**Response `201 Created`**
+
+```json
+{
+  "data": {
+    "id": 1,
+    "name": "Website redesign",
+    "description": "Q3 marketing site",
+    "status": "active",
+    "created_at": "2026-06-08 11:30:00",
+    "updated_at": "2026-06-08 11:30:00"
+  }
+}
+```
+
+---
+
+### 9. Show Project
+
+`GET /api/project/{project}`
+
+Allowed only for the project's owner.
+
+**Response `200 OK`**
+
+```json
+{
+  "data": {
+    "id": 1,
+    "name": "Website redesign",
+    "description": "Q3 marketing site",
+    "status": "active",
+    "created_at": "2026-06-08 11:30:00",
+    "updated_at": "2026-06-08 11:30:00"
+  }
+}
+```
+
+---
+
+### 10. Update Project
+
+`PUT|PATCH /api/project/{project}`
+
+Partial update — all fields optional. Allowed only for the project's owner.
+
+**Body parameters**
+
+| Field         | Type   | Rules                                       |
+| ------------- | ------ | ------------------------------------------- |
+| `name`        | string | optional, string, max 255                   |
+| `description` | string | optional, string, max 1000                  |
+| `status`      | string | optional, one of `active`, `archived`       |
+
+**Request**
+
+```json
+{
+  "status": "archived"
+}
 ```
 
 **Response `200 OK`**
 
 ```json
 {
-  "message": "User deleted"
+  "data": {
+    "id": 1,
+    "name": "Website redesign",
+    "description": "Q3 marketing site",
+    "status": "archived",
+    "created_at": "2026-06-08 11:30:00",
+    "updated_at": "2026-06-08 11:35:00"
+  }
+}
+```
+
+---
+
+### 11. Delete Project
+
+`DELETE /api/project/{project}`
+
+Allowed only for the project's owner.
+
+**Response `200 OK`**
+
+```json
+{
+  "message": "Project deleted"
 }
 ```
 
@@ -345,20 +525,27 @@ curl -X POST http://127.0.0.1:8000/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"john@example.com","password":"secret123"}'
 
-# Show user (replace TOKEN and {id})
-curl http://127.0.0.1:8000/api/user/1 \
-  -H "Accept: application/json" \
-  -H "Authorization: Bearer TOKEN"
-
-# Update user
-curl -X PATCH http://127.0.0.1:8000/api/user/1 \
+# Create project (replace TOKEN)
+curl -X POST http://127.0.0.1:8000/api/project \
   -H "Accept: application/json" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer TOKEN" \
-  -d '{"name":"John Updated"}'
+  -d '{"name":"Website redesign","description":"Q3 marketing site"}'
 
-# Delete user
-curl -X DELETE http://127.0.0.1:8000/api/user/1 \
+# List projects
+curl http://127.0.0.1:8000/api/project \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer TOKEN"
+
+# Update project
+curl -X PATCH http://127.0.0.1:8000/api/project/1 \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer TOKEN" \
+  -d '{"status":"archived"}'
+
+# Delete project
+curl -X DELETE http://127.0.0.1:8000/api/project/1 \
   -H "Accept: application/json" \
   -H "Authorization: Bearer TOKEN"
 
@@ -376,30 +563,34 @@ curl -X POST http://127.0.0.1:8000/api/auth/logout \
 app/
 ├── Contracts/
 │   ├── Repositories/
-│   │   └── UserRepositoryInterface.php
+│   │   ├── UserRepositoryInterface.php
+│   │   └── ProjectRepositoryInterface.php
 │   └── Services/
 │       ├── AuthServiceInterface.php
-│       └── UserServiceInterface.php
+│       ├── UserServiceInterface.php
+│       └── ProjectServiceInterface.php
 ├── Http/
 │   ├── Controllers/Api/
 │   │   ├── Auth/AuthController.php
-│   │   └── UsersController.php
+│   │   ├── UsersController.php
+│   │   └── ProjectController.php
 │   ├── Requests/
 │   │   ├── Auth/{RegisterRequest,LoginRequest}.php
-│   │   └── Users/UpdateRequest.php
-│   └── Resources/UserResource.php
-├── Models/User.php
-├── Policies/UserPolicy.php
-├── Repositories/UserRepository.php
-├── Services/{AuthService,UserService}.php
+│   │   ├── Users/UpdateRequest.php
+│   │   └── Projects/{CreateRequest,UpdateRequest}.php
+│   └── Resources/{UserResource,ProjectResource}.php
+├── Models/{User,Project}.php
+├── Policies/{UserPolicy,ProjectPolicy}.php
+├── Repositories/{UserRepository,ProjectRepository}.php
+├── Services/{AuthService,UserService,ProjectService}.php
 └── Providers/{AppServiceProvider,RepositoryServiceProvider,ServiceServiceProvider}.php
 routes/
 └── api.php
 ```
 
 - **Controllers** handle HTTP only and delegate to services.
-- **Services** hold business logic (`AuthService`, `UserService`).
-- **Repositories** encapsulate all Eloquent/database access (`UserRepository`).
-- **Policies** authorize per-user actions (`UserPolicy` — owner-only access).
+- **Services** hold business logic (`AuthService`, `UserService`, `ProjectService`).
+- **Repositories** encapsulate all Eloquent/database access (`UserRepository`, `ProjectRepository`).
+- **Policies** authorize per-record ownership (`UserPolicy`, `ProjectPolicy`).
 - **Service Providers** bind interfaces to implementations for dependency injection
   (`RepositoryServiceProvider`, `ServiceServiceProvider`).
