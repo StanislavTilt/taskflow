@@ -105,6 +105,17 @@ Resource endpoints are protected by **policies**:
 
 Acting on a record you don't own returns `403 This action is unauthorized.`
 
+### Emails
+
+On registration a **welcome email** is sent automatically: `UserObserver` reacts to the
+`User` `created` event and dispatches `WelcomeMail` (a Markdown mailable rendered from
+`resources/views/emails/welcome.blade.php`).
+
+Mail delivery uses the configured mailer — by default `MAIL_MAILER=log`, so messages are
+written to `storage/logs/laravel.log` rather than actually sent. To preview emails in a UI,
+point the mailer at **Mailpit** (`MAIL_MAILER=smtp`, `MAIL_HOST=127.0.0.1`, `MAIL_PORT=1025`,
+inbox at `http://localhost:8025`).
+
 ---
 
 ## API Endpoints
@@ -579,11 +590,15 @@ app/
 │   │   ├── Users/UpdateRequest.php
 │   │   └── Projects/{CreateRequest,UpdateRequest}.php
 │   └── Resources/{UserResource,ProjectResource}.php
+├── Mail/WelcomeMail.php
 ├── Models/{User,Project}.php
+├── Observers/UserObserver.php
 ├── Policies/{UserPolicy,ProjectPolicy}.php
 ├── Repositories/{UserRepository,ProjectRepository}.php
 ├── Services/{AuthService,UserService,ProjectService}.php
 └── Providers/{AppServiceProvider,RepositoryServiceProvider,ServiceServiceProvider}.php
+resources/
+└── views/emails/welcome.blade.php
 routes/
 └── api.php
 ```
@@ -592,5 +607,7 @@ routes/
 - **Services** hold business logic (`AuthService`, `UserService`, `ProjectService`).
 - **Repositories** encapsulate all Eloquent/database access (`UserRepository`, `ProjectRepository`).
 - **Policies** authorize per-record ownership (`UserPolicy`, `ProjectPolicy`).
+- **Mail / Observers** — `UserObserver` listens for the `created` event on `User` and sends
+  the `WelcomeMail` (Markdown template at `resources/views/emails/welcome.blade.php`).
 - **Service Providers** bind interfaces to implementations for dependency injection
   (`RepositoryServiceProvider`, `ServiceServiceProvider`).
