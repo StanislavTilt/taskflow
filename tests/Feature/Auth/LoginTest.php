@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -13,7 +14,7 @@ class LoginTest extends TestCase
      */
     public function test_user_can_login_and_receives_token(): void
     {
-        \App\Models\User::factory()
+        User::factory()
             ->create(['email' => 'example@example.com', 'password' => 'password']);
         $this->postJson('/api/auth/login', [
             'email' => 'example@example.com',
@@ -24,7 +25,7 @@ class LoginTest extends TestCase
 
     public function test_user_cannot_login_wrong_email_or_password(): void
     {
-        \App\Models\User::factory()
+        User::factory()
             ->create(['email' => 'example@example.com', 'password' => 'password']);
 
         $this->postJson('/api/auth/login', [

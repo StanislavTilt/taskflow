@@ -3,22 +3,20 @@
 namespace Tests\Feature\Users;
 
 use App\Models\User;
+use App\Traits\TestTrait;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithFaker;
-use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class UpdateTest extends TestCase
 {
-    use RefreshDatabase, WithFaker;
+    use RefreshDatabase, WithFaker, TestTrait;
     /**
      * A basic feature test example.
      */
     public function test_user_can_update_user(): void
     {
-        $user = User::factory()->create();
-
-        Sanctum::actingAs($user);
+        $user = $this->actingAsUser();
 
         $newName = fake()->name();
         $newEmail = fake()->email();
@@ -35,10 +33,8 @@ class UpdateTest extends TestCase
 
     public function test_user_cannot_update_other_user(): void
     {
-        $user = User::factory()->create();
+        $this->actingAsUser();
         $otherUser = User::factory()->create();
-
-        Sanctum::actingAs($user);
 
         $this->patchJson("/api/user/$otherUser->id", [
             'name' => fake()->name(),
@@ -47,5 +43,30 @@ class UpdateTest extends TestCase
             ->assertStatus(403)
             ->assertJsonStructure(['message']);
 
+    }
+
+    public function test_user_cannot_update_info_by_invalid_email(): void
+    {
+        $user = $this->actingAsUser();
+
+        $this->patchJson("/api/user/$user->id", [
+            'name' => fake()->name(),
+            'email' => "WRONG"
+        ])
+            ->assertStatus(422)
+            ->assertJsonStructure(['message']);
+
+    }
+
+    public function test_guest_cannot_update_other_user_info(): void
+    {
+        $user = User::factory()->create();
+
+        $this->patchJson("/api/user/$user->id", [
+            'name' => fake()->name(),
+            'email' => fake()->email()
+        ])
+            ->assertStatus(401)
+            ->assertJsonStructure(['message']);
     }
 }

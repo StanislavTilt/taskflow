@@ -27,7 +27,7 @@ class RegisterTest extends TestCase
 
         $this->assertDatabaseHas('users', ['email' => 'example@example.com']);
 
-        Mail::assertSent(WelcomeMail::class);
+        Mail::assertSent(WelcomeMail::class, fn ($m) => $m->user->email === 'example@example.com');
     }
 
     public function test_user_can_not_register_email_is_taken(): void
@@ -42,8 +42,6 @@ class RegisterTest extends TestCase
 
         $response->assertStatus(422)
             ->assertJsonStructure(['message', 'errors' => ['email']]);
-
-
     }
 
 }
