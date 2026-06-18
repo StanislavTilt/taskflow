@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Controllers\Api\Auth\AuthController;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 //Authorization
@@ -16,9 +15,10 @@ Route::group([
 
 //Users
 Route::resource('user', \App\Http\Controllers\Api\UsersController::class)->except([
-    'create', 'store', 'edit', 'index'
+    'create', 'store', 'edit', 'index', 'destroy'
 ])->middleware('auth:sanctum');
 
+//Projects
 Route::resource('project', \App\Http\Controllers\Api\ProjectController::class)->except([
     'create', 'edit'
 ])->middleware('auth:sanctum');

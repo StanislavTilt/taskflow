@@ -1,7 +1,7 @@
 <x-mail::message>
 # Introduction
 
-Hello Hello stranger!
+Hello Hello {{ $user->name }}!
 
 <x-mail::button :url="''">
 Button Text

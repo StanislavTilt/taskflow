@@ -2,8 +2,10 @@
 
 namespace App\Http\Requests\Projects;
 
+use App\Enums\ProjectStatus;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateRequest extends FormRequest
 {
@@ -25,7 +27,10 @@ class UpdateRequest extends FormRequest
         return [
             'name' => 'sometimes|string|max:255',
             'description' => 'sometimes|string|max:1000',
-            'status' => 'sometimes|string|in:active,archived',
+            'status' => [
+                'sometimes',
+                Rule::enum(ProjectStatus::class),
+            ],
         ];
     }
 }

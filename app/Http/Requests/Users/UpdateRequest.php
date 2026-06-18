@@ -27,7 +27,7 @@ class UpdateRequest extends FormRequest
             'name' => 'sometimes|string|max:255',
             'email' =>
                 [
-                    Rule::unique('users')->ignore(request()->user()->id),
+                    Rule::unique('users')->ignore($this->user()->id),
                     'sometimes',
                     'email'
                 ],

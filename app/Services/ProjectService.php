@@ -35,7 +35,7 @@ readonly class ProjectService implements ProjectServiceInterface
         return $this->projectRepository->createFor($user, $data);
     }
 
-    public function destroy(Project $project)
+    public function destroy(Project $project): void
     {
         $this->projectRepository->destroy($project);
     }

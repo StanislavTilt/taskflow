@@ -8,6 +8,7 @@ use App\Http\Requests\Users\UpdateRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Http\JsonResponse;
 
 class UsersController extends Controller
 {
@@ -18,23 +19,18 @@ class UsersController extends Controller
     {
     }
 
-    public function update(UpdateRequest $request, User $user): UserResource
+    public function update(UpdateRequest $request, User $user): JsonResponse
     {
         $this->authorize('update', $user);
         $user = $this->userService->update($user, $request->validated());
-        return UserResource::make($user);
+        return UserResource::make($user)
+            ->response();
     }
 
-    public function show(User $user): UserResource
+    public function show(User $user): JsonResponse
     {
         $this->authorize('show', $user);
-        return UserResource::make($user);
-    }
-
-    public function destroy(User $user)
-    {
-        $this->authorize('delete', $user);
-        $this->userService->destroy($user);
-        return response()->json(['message' => 'User deleted']);
+        return UserResource::make($user)
+            ->response();
     }
 }

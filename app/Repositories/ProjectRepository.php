@@ -9,10 +9,6 @@ use Illuminate\Support\Collection;
 
 readonly class ProjectRepository implements ProjectRepositoryInterface
 {
-    /**
-     * Create a new class instance.
-     */
-
     public function allFor(User $user): Collection
     {
         return $user->ownedProjects()->get();
@@ -29,7 +25,7 @@ readonly class ProjectRepository implements ProjectRepositoryInterface
         return $project;
     }
 
-    public function destroy(Project $project)
+    public function destroy(Project $project): void
     {
         $project->delete();
     }

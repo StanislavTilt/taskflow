@@ -2,12 +2,12 @@
 
 namespace App\Contracts\Services;
 
-use App\Http\Requests\Auth\RegisterRequest;
 use App\Models\User;
+use Illuminate\Http\Request;
 
 interface AuthServiceInterface
 {
     public function login(string $email, string $password): User;
-    public function register(array $data): User;
-    public function logout();
+    public function register(array $data): array;
+    public function logout(User $user): void;
 }

@@ -9,6 +9,8 @@ use App\Http\Requests\Projects\UpdateRequest;
 use App\Http\Resources\ProjectResource;
 use App\Models\Project;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class ProjectController extends Controller
 {
@@ -19,32 +21,37 @@ class ProjectController extends Controller
     {
     }
 
-    public function index()
+    public function index(Request $request): JsonResponse
     {
-        $projects = $this->projectService->getAllFor(request()->user());
-        return ProjectResource::collection($projects);
+        $projects = $this->projectService->getAllFor($request->user());
+        return ProjectResource::collection($projects)
+            ->response();
     }
 
-    public function store(CreateRequest $request): ProjectResource
+    public function store(CreateRequest $request): JsonResponse
     {
         $project = $this->projectService->createFor($request->user(),$request->validated());
-        return ProjectResource::make($project)->response()->setStatusCode(201);
+        return ProjectResource::make($project)
+            ->response()
+            ->setStatusCode(201);
     }
 
-    public function show(Project $project): ProjectResource
+    public function show(Project $project): JsonResponse
     {
         $this->authorize('show', $project);
-        return ProjectResource::make($project);
+        return ProjectResource::make($project)
+            ->response();
     }
 
-    public function update(UpdateRequest $request, Project $project): ProjectResource
+    public function update(UpdateRequest $request, Project $project): JsonResponse
     {
         $this->authorize('update', $project);
         $project = $this->projectService->update($project, $request->validated());
-        return ProjectResource::make($project);
+        return ProjectResource::make($project)
+            ->response();
     }
 
-    public function destroy(Project $project)
+    public function destroy(Project $project): JsonResponse
     {
         $this->authorize('destroy', $project);
         $this->projectService->destroy($project);

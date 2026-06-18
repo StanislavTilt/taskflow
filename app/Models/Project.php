@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Enums\ProjectStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -11,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Hidden(['owner_id'])]
 class Project extends Model
 {
+    use HasFactory;
     /**
      * Get the attributes that should be cast.
      *
@@ -19,9 +22,7 @@ class Project extends Model
     protected function casts(): array
     {
         return [
-            'name' => 'string',
-            'description' => 'string',
-            'status' => 'string',
+            'status' => ProjectStatus::class,
         ];
     }
 

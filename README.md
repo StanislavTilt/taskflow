@@ -99,7 +99,7 @@ Content-Type: application/json
 
 Resource endpoints are protected by **policies**:
 
-- **Users** — a user may only `show`, `update`, or `delete` **their own** account.
+- **Users** — a user may only `show` or `update` **their own** account.
 - **Projects** — a user may only `show`, `update`, or `delete` projects **they own**
   (`owner_id`). The project list (`GET /project`) returns only the authenticated user's projects.
 
@@ -108,8 +108,14 @@ Acting on a record you don't own returns `403 This action is unauthorized.`
 ### Emails
 
 On registration a **welcome email** is sent automatically: `UserObserver` reacts to the
-`User` `created` event and dispatches `WelcomeMail` (a Markdown mailable rendered from
-`resources/views/emails/welcome.blade.php`).
+`User` `created` event and dispatches the queued `MailUserJob`, which sends `WelcomeMail`
+(a Markdown mailable rendered from `resources/views/emails/welcome.blade.php`).
+
+Because the job is queued, make sure a worker is running to actually deliver it:
+
+```bash
+php artisan queue:work
+```
 
 Mail delivery uses the configured mailer — by default `MAIL_MAILER=log`, so messages are
 written to `storage/logs/laravel.log` rather than actually sent. To preview emails in a UI,
@@ -122,31 +128,41 @@ inbox at `http://localhost:8025`).
 
 Base URL: `http://127.0.0.1:8000/api`
 
+### Status codes
+
+| Code              | Meaning                                                            |
+| ----------------- | ----------------------------------------------------------------- |
+| `200 OK`          | Successful read / update / action                                 |
+| `201 Created`     | A new resource was created (register, create project)             |
+| `401 Unauthorized`| Missing or invalid Bearer token on a protected route              |
+| `403 Forbidden`   | Authenticated but acting on a record you don't own (policy)        |
+| `404 Not Found`   | Route or model (route-model binding) not found                    |
+| `422 Unprocessable Entity` | Validation failed — body contains `message` + `errors`   |
+
 ### Auth
 
-| Method | Endpoint         | Auth         | Throttle    | Description                        |
-| ------ | ---------------- | ------------ | ----------- | ---------------------------------- |
-| POST   | `/auth/register` | Public       | 6 req / min | Register a new user, returns token |
-| POST   | `/auth/login`    | Public       | 6 req / min | Log in, returns token              |
-| POST   | `/auth/logout`   | Bearer token | 6 req / min | Revoke the current user's tokens   |
+| Method | Endpoint         | Auth         | Throttle    | Success | Description                        |
+| ------ | ---------------- | ------------ | ----------- | ------- | ---------------------------------- |
+| POST   | `/auth/register` | Public       | 6 req / min | `201`   | Register a new user, returns token |
+| POST   | `/auth/login`    | Public       | 6 req / min | `200`   | Log in, returns token              |
+| POST   | `/auth/logout`   | Bearer token | 6 req / min | `200`   | Revoke the current user's tokens   |
 
 ### Users
 
-| Method      | Endpoint       | Auth         | Description                |
-| ----------- | -------------- | ------------ | -------------------------- |
-| GET         | `/user/{user}` | Bearer token | Show a user (owner only)   |
-| PUT / PATCH | `/user/{user}` | Bearer token | Update a user (owner only) |
-| DELETE      | `/user/{user}` | Bearer token | Delete a user (owner only) |
+| Method      | Endpoint       | Auth         | Success | Description                |
+| ----------- | -------------- | ------------ | ------- | -------------------------- |
+| GET         | `/user/{user}` | Bearer token | `200`   | Show a user (owner only)   |
+| PUT / PATCH | `/user/{user}` | Bearer token | `200`   | Update a user (owner only) |
 
 ### Projects
 
-| Method      | Endpoint             | Auth         | Description                            |
-| ----------- | -------------------- | ------------ | -------------------------------------- |
-| GET         | `/project`           | Bearer token | List the authenticated user's projects |
-| POST        | `/project`           | Bearer token | Create a project (owned by caller)     |
-| GET         | `/project/{project}` | Bearer token | Show a project (owner only)            |
-| PUT / PATCH | `/project/{project}` | Bearer token | Update a project (owner only)          |
-| DELETE      | `/project/{project}` | Bearer token | Delete a project (owner only)          |
+| Method      | Endpoint             | Auth         | Success | Description                            |
+| ----------- | -------------------- | ------------ | ------- | -------------------------------------- |
+| GET         | `/project`           | Bearer token | `200`   | List the authenticated user's projects |
+| POST        | `/project`           | Bearer token | `201`   | Create a project (owned by caller)     |
+| GET         | `/project/{project}` | Bearer token | `200`   | Show a project (owner only)            |
+| PUT / PATCH | `/project/{project}` | Bearer token | `200`   | Update a project (owner only)          |
+| DELETE      | `/project/{project}` | Bearer token | `200`   | Delete a project (owner only)          |
 
 ---
 
@@ -155,6 +171,9 @@ Base URL: `http://127.0.0.1:8000/api`
 ### 1. Register
 
 `POST /api/auth/register`
+
+Creates the user and issues an access token in a single database transaction, then queues the
+welcome email.
 
 **Body parameters**
 
@@ -176,7 +195,9 @@ Base URL: `http://127.0.0.1:8000/api`
 }
 ```
 
-**Response `200 OK`**
+**Response `201 Created`**
+
+> A new user resource is created, so the endpoint returns `201` (not `200`).
 
 ```json
 {
@@ -345,22 +366,6 @@ and updated. Allowed only for the account's owner.
 
 ---
 
-### 6. Delete User
-
-`DELETE /api/user/{user}`
-
-Deletes the user. Allowed only for the account's owner.
-
-**Response `200 OK`**
-
-```json
-{
-  "message": "User deleted"
-}
-```
-
----
-
 ## Projects
 
 A **project** belongs to a user (`owner_id`) and has a `status` of `active` or `archived`
@@ -379,7 +384,7 @@ A **project** belongs to a user (`owner_id`) and has a `status` of `active` or `
 }
 ```
 
-### 7. List Projects
+### 6. List Projects
 
 `GET /api/project`
 
@@ -404,7 +409,7 @@ Returns only the authenticated user's projects.
 
 ---
 
-### 8. Create Project
+### 7. Create Project
 
 `POST /api/project`
 
@@ -443,7 +448,7 @@ The new project is automatically owned by the authenticated user.
 
 ---
 
-### 9. Show Project
+### 8. Show Project
 
 `GET /api/project/{project}`
 
@@ -466,7 +471,7 @@ Allowed only for the project's owner.
 
 ---
 
-### 10. Update Project
+### 9. Update Project
 
 `PUT|PATCH /api/project/{project}`
 
@@ -505,7 +510,7 @@ Partial update — all fields optional. Allowed only for the project's owner.
 
 ---
 
-### 11. Delete Project
+### 10. Delete Project
 
 `DELETE /api/project/{project}`
 
@@ -568,6 +573,66 @@ curl -X POST http://127.0.0.1:8000/api/auth/logout \
 
 ---
 
+## Testing
+
+The project uses **PHPUnit** feature tests that exercise the API end-to-end.
+
+### Test environment
+
+`phpunit.xml` runs tests in an isolated environment — nothing touches your real database or
+sends real email:
+
+| Setting             | Value       | Effect                                            |
+| ------------------- | ----------- | ------------------------------------------------- |
+| `DB_CONNECTION`     | `sqlite`    | separate test database…                           |
+| `DB_DATABASE`       | `:memory:`  | …held in memory, migrated fresh per run           |
+| `MAIL_MAILER`       | `array`     | emails are captured in memory, never delivered    |
+| `QUEUE_CONNECTION`  | `sync`      | queued jobs (e.g. `MailUserJob`) run inline       |
+| `BCRYPT_ROUNDS`     | `4`         | fast password hashing                             |
+
+### Running tests
+
+```bash
+composer test                       # recommended — clears config cache first, then runs
+php artisan test                    # run all tests
+php artisan test --filter=LoginTest # a single class
+php artisan test tests/Feature/Auth # a folder
+php artisan test --parallel         # run in parallel
+```
+
+> ⚠️ Prefer `composer test`. A cached config (`bootstrap/cache/config.php`) overrides the
+> `phpunit.xml` values above (e.g. forces the queue back to `database`), which makes
+> queue/mail assertions fail. `composer test` runs `php artisan config:clear` first to avoid
+> this; if you use `php artisan test` directly, clear the cache yourself.
+
+### Factories
+
+Test data is built with model factories:
+
+- `UserFactory` — `User::factory()->create([...])`
+- `ProjectFactory` — `Project::factory()->for($user, 'owner')->create()`
+
+Each feature test uses the `RefreshDatabase` trait, authenticates with `Sanctum::actingAs($user)`
+(or `$this->actingAs($user)`), and follows the Arrange → Act → Assert pattern.
+
+### Current coverage
+
+```
+tests/Feature/
+├── Auth/
+│   ├── RegisterTest.php   # register success (201), duplicate email (422)
+│   └── LoginTest.php      # login success (200), wrong credentials (422)
+└── Users/
+    ├── ShowUserTest.php   # owner can view (200), other user forbidden (403)
+    └── UpdateTest.php     # owner can update (200), other user forbidden (403)
+```
+
+> The default `tests/Feature/ExampleTest.php` and `tests/Unit/ExampleTest.php` are framework
+> stubs and can be removed. Project endpoints (`/project`) are not covered yet — good next tests
+> to add (list scoping, create `201`, owner-only update/delete).
+
+---
+
 ## Project Structure
 
 ```
@@ -590,6 +655,7 @@ app/
 │   │   ├── Users/UpdateRequest.php
 │   │   └── Projects/{CreateRequest,UpdateRequest}.php
 │   └── Resources/{UserResource,ProjectResource}.php
+├── Jobs/MailUserJob.php
 ├── Mail/WelcomeMail.php
 ├── Models/{User,Project}.php
 ├── Observers/UserObserver.php
@@ -597,6 +663,9 @@ app/
 ├── Repositories/{UserRepository,ProjectRepository}.php
 ├── Services/{AuthService,UserService,ProjectService}.php
 └── Providers/{AppServiceProvider,RepositoryServiceProvider,ServiceServiceProvider}.php
+database/
+├── factories/{UserFactory,ProjectFactory}.php
+└── seeders/{DatabaseSeeder,UserSeeder,ProjectSeeder}.php
 resources/
 └── views/emails/welcome.blade.php
 routes/
@@ -604,10 +673,11 @@ routes/
 ```
 
 - **Controllers** handle HTTP only and delegate to services.
-- **Services** hold business logic (`AuthService`, `UserService`, `ProjectService`).
+- **Services** hold business logic (`AuthService`, `UserService`, `ProjectService`);
+  `AuthService::register` runs inside a DB transaction.
 - **Repositories** encapsulate all Eloquent/database access (`UserRepository`, `ProjectRepository`).
 - **Policies** authorize per-record ownership (`UserPolicy`, `ProjectPolicy`).
-- **Mail / Observers** — `UserObserver` listens for the `created` event on `User` and sends
-  the `WelcomeMail` (Markdown template at `resources/views/emails/welcome.blade.php`).
+- **Mail / Observers / Jobs** — `UserObserver` reacts to the `User` `created` event and dispatches
+  the queued `MailUserJob`, which sends `WelcomeMail` (`resources/views/emails/welcome.blade.php`).
 - **Service Providers** bind interfaces to implementations for dependency injection
   (`RepositoryServiceProvider`, `ServiceServiceProvider`).
