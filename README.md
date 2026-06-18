@@ -617,19 +617,28 @@ Each feature test uses the `RefreshDatabase` trait, authenticates with `Sanctum:
 
 ### Current coverage
 
+The suite covers every endpoint — happy paths, validation (`422`), ownership (`403`), and the
+unauthenticated boundary (`401`):
+
 ```
 tests/Feature/
 ├── Auth/
-│   ├── RegisterTest.php   # register success (201), duplicate email (422)
-│   └── LoginTest.php      # login success (200), wrong credentials (422)
-└── Users/
-    ├── ShowUserTest.php   # owner can view (200), other user forbidden (403)
-    └── UpdateTest.php     # owner can update (200), other user forbidden (403)
+│   ├── RegisterTest.php   # register (201) + welcome mail sent, duplicate email (422)
+│   └── LoginTest.php      # login (200), wrong credentials (422)
+├── Users/
+│   ├── ShowTest.php       # owner views (200), other user forbidden (403)
+│   └── UpdateTest.php     # owner updates (200), other user forbidden (403)
+└── Projects/
+    ├── IndexTest.php      # owner sees only their projects (scoping), guest (401)
+    ├── CreateTest.php     # create (201) owned by caller, validation (422), guest (401)
+    ├── ShowTest.php       # owner views (200), non-owner (403), guest (401)
+    ├── UpdateTest.php     # owner updates (200), invalid values (422), non-owner (403), guest (401)
+    └── DeleteTest.php     # owner deletes (200), non-owner (403), guest (401)
 ```
 
-> The default `tests/Feature/ExampleTest.php` and `tests/Unit/ExampleTest.php` are framework
-> stubs and can be removed. Project endpoints (`/project`) are not covered yet — good next tests
-> to add (list scoping, create `201`, owner-only update/delete).
+> Run `php artisan test` to execute all of them (currently green). Authentication uses
+> `Sanctum::actingAs($user)`; unauthenticated cases assert `401` via the JSON request helpers
+> (`getJson`/`postJson`/…).
 
 ---
 
@@ -655,6 +664,7 @@ app/
 │   │   ├── Users/UpdateRequest.php
 │   │   └── Projects/{CreateRequest,UpdateRequest}.php
 │   └── Resources/{UserResource,ProjectResource}.php
+├── Enums/ProjectStatus.php
 ├── Jobs/MailUserJob.php
 ├── Mail/WelcomeMail.php
 ├── Models/{User,Project}.php
@@ -677,6 +687,8 @@ routes/
   `AuthService::register` runs inside a DB transaction.
 - **Repositories** encapsulate all Eloquent/database access (`UserRepository`, `ProjectRepository`).
 - **Policies** authorize per-record ownership (`UserPolicy`, `ProjectPolicy`).
+- **Enums** — `ProjectStatus` (`active`/`archived`) is the single source of truth, reused by the
+  model cast, the `status` validation rule (`Rule::enum`), and the factory.
 - **Mail / Observers / Jobs** — `UserObserver` reacts to the `User` `created` event and dispatches
   the queued `MailUserJob`, which sends `WelcomeMail` (`resources/views/emails/welcome.blade.php`).
 - **Service Providers** bind interfaces to implementations for dependency injection
