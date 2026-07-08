@@ -13,12 +13,20 @@ Route::group([
     Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 });
 
-//Users
-Route::resource('user', \App\Http\Controllers\Api\UsersController::class)->except([
-    'create', 'store', 'edit', 'index', 'destroy'
-])->middleware('auth:sanctum');
+Route::middleware(['auth:sanctum'])->group(function () {
+    //Users
+    Route::resource('user', \App\Http\Controllers\Api\UsersController::class)->except([
+        'create', 'store', 'edit', 'index', 'destroy'
+    ]);
 
-//Projects
-Route::resource('project', \App\Http\Controllers\Api\ProjectController::class)->except([
-    'create', 'edit'
-])->middleware('auth:sanctum');
+    //Projects
+    Route::resource('project', \App\Http\Controllers\Api\ProjectController::class)->except([
+        'create', 'edit'
+    ]);
+
+    //Tasks
+    Route::group(['prefix' => 'tasks'], function () {
+        Route::post('import/{project}', [\App\Http\Controllers\Api\TaskController::class, 'uploadTasksFromCsv']);
+    });
+});
+
