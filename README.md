@@ -1,9 +1,11 @@
 # TaskFlow API
 
-A Laravel 13 REST API with token-based authentication powered by **Laravel Sanctum**.
+A Laravel 13 REST API for managing **users**, **projects**, and their **tasks** (including bulk
+task import from CSV), with token-based authentication powered by **Laravel Sanctum**.
+
 The codebase follows a layered architecture: **Controller → Service → Repository**, with
-contracts (interfaces) bound through dedicated service providers, and authorization handled
-by **Policies**.
+contracts (interfaces) bound through dedicated service providers, authorization handled by
+**Policies**, and background work (welcome email, CSV processing) dispatched to **queued jobs**.
 
 ## Tech Stack
 
@@ -102,6 +104,8 @@ Resource endpoints are protected by **policies**:
 - **Users** — a user may only `show` or `update` **their own** account.
 - **Projects** — a user may only `show`, `update`, or `delete` projects **they own**
   (`owner_id`). The project list (`GET /project`) returns only the authenticated user's projects.
+- **Tasks** — importing tasks into a project is allowed only for the project's **owner**
+  (checked via the same `ProjectPolicy`).
 
 Acting on a record you don't own returns `403 This action is unauthorized.`
 
@@ -163,6 +167,12 @@ Base URL: `http://127.0.0.1:8000/api`
 | GET         | `/project/{project}` | Bearer token | `200`   | Show a project (owner only)            |
 | PUT / PATCH | `/project/{project}` | Bearer token | `200`   | Update a project (owner only)          |
 | DELETE      | `/project/{project}` | Bearer token | `200`   | Delete a project (owner only)          |
+
+### Tasks
+
+| Method | Endpoint                  | Auth         | Success | Description                                   |
+| ------ | ------------------------- | ------------ | ------- | --------------------------------------------- |
+| POST   | `/tasks/import/{project}` | Bearer token | `200`   | Import tasks into a project from a CSV file (owner only) |
 
 ---
 
@@ -526,6 +536,43 @@ Allowed only for the project's owner.
 
 ---
 
+## Tasks
+
+### 11. Import Tasks from CSV
+
+`POST /api/tasks/import/{project}`
+
+Uploads a CSV file and imports its rows as tasks into `{project}`. Allowed only for the
+project's owner. The file is stored, an `ImportReport` (status `pending`) is created, and a
+job processes the rows in the background; the endpoint responds immediately.
+
+**Request** — `multipart/form-data`
+
+| Field  | Type | Rules                                   |
+| ------ | ---- | --------------------------------------- |
+| `file` | file | required, `csv`/`txt`, max 10 MB (10240 KB) |
+
+**Headers**
+
+```
+Authorization: Bearer <token>
+Accept: application/json
+```
+
+**Response `200 OK`**
+
+```json
+{
+  "message": "Processing started"
+}
+```
+
+> The import is tracked by an `ImportReport` whose `status` moves through
+> `pending → success | failed` (`App\Enums\ImportReportStatus`). When processing finishes, an
+> `ImportReadyMail` notification is queued to the uploader.
+
+---
+
 ## Quick Test with cURL
 
 ```bash
@@ -565,6 +612,12 @@ curl -X DELETE http://127.0.0.1:8000/api/project/1 \
   -H "Accept: application/json" \
   -H "Authorization: Bearer TOKEN"
 
+# Import tasks into project 1 from a CSV file
+curl -X POST http://127.0.0.1:8000/api/tasks/import/1 \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer TOKEN" \
+  -F "file=@tasks.csv"
+
 # Logout
 curl -X POST http://127.0.0.1:8000/api/auth/logout \
   -H "Accept: application/json" \
@@ -575,7 +628,9 @@ curl -X POST http://127.0.0.1:8000/api/auth/logout \
 
 ## Testing
 
-The project uses **PHPUnit** feature tests that exercise the API end-to-end.
+The project uses **PHPUnit** for both **feature tests** (exercising the API end-to-end) and
+**unit tests** (verifying isolated classes such as policies and services with mocked
+dependencies).
 
 ### Test environment
 
@@ -612,13 +667,14 @@ Test data is built with model factories:
 - `UserFactory` — `User::factory()->create([...])`
 - `ProjectFactory` — `Project::factory()->for($user, 'owner')->create()`
 
-Each feature test uses the `RefreshDatabase` trait, authenticates with `Sanctum::actingAs($user)`
-(or `$this->actingAs($user)`), and follows the Arrange → Act → Assert pattern.
+Feature tests use the `RefreshDatabase` trait and authenticate with `Sanctum::actingAs($user)`.
+A shared `App\Traits\TestTrait::actingAsUser()` helper creates-and-authenticates a user in one
+call to keep tests DRY. All tests follow the Arrange → Act → Assert pattern.
 
 ### Current coverage
 
-The suite covers every endpoint — happy paths, validation (`422`), ownership (`403`), and the
-unauthenticated boundary (`401`):
+**Feature tests** cover every endpoint — happy paths, validation (`422`), ownership (`403`),
+and the unauthenticated boundary (`401`):
 
 ```
 tests/Feature/
@@ -632,13 +688,25 @@ tests/Feature/
     ├── IndexTest.php      # owner sees only their projects (scoping), guest (401)
     ├── CreateTest.php     # create (201) owned by caller, validation (422), guest (401)
     ├── ShowTest.php       # owner views (200), non-owner (403), guest (401)
-    ├── UpdateTest.php     # owner updates (200), invalid values (422), non-owner (403), guest (401)
+    ├── UpdateTest.php     # owner updates (200), invalid name/description/status (422), non-owner (403), guest (401)
     └── DeleteTest.php     # owner deletes (200), non-owner (403), guest (401)
 ```
 
-> Run `php artisan test` to execute all of them (currently green). Authentication uses
-> `Sanctum::actingAs($user)`; unauthenticated cases assert `401` via the JSON request helpers
-> (`getJson`/`postJson`/…).
+**Unit tests** verify isolated logic without HTTP or a database:
+
+```
+tests/Unit/
+├── Policies/
+│   ├── ProjectPolicyTest.php   # owner allowed / non-owner denied (data-provider over abilities)
+│   └── UserPolicyTest.php      # owner allowed / non-owner denied
+└── Services/
+    └── AuthServiceTest.php     # login returns user / throws on bad credentials (repository mocked)
+```
+
+> `AuthServiceTest` mocks `UserRepositoryInterface` with **Mockery** and extends `Tests\TestCase`
+> (the container is booted so the `Hash` facade works); pure policy tests extend
+> `PHPUnit\Framework\TestCase`. Run everything with `php artisan test` (or a suite:
+> `php artisan test --testsuite=Unit`).
 
 ---
 
@@ -647,49 +715,54 @@ tests/Feature/
 ```
 app/
 ├── Contracts/
-│   ├── Repositories/
-│   │   ├── UserRepositoryInterface.php
-│   │   └── ProjectRepositoryInterface.php
-│   └── Services/
-│       ├── AuthServiceInterface.php
-│       ├── UserServiceInterface.php
-│       └── ProjectServiceInterface.php
+│   ├── Repositories/{UserRepositoryInterface,ProjectRepositoryInterface}.php
+│   └── Services/{AuthServiceInterface,UserServiceInterface,ProjectServiceInterface}.php
+├── Enums/{ProjectStatus,ImportReportStatus}.php
 ├── Http/
 │   ├── Controllers/Api/
 │   │   ├── Auth/AuthController.php
 │   │   ├── UsersController.php
-│   │   └── ProjectController.php
+│   │   ├── ProjectController.php
+│   │   └── TaskController.php
 │   ├── Requests/
 │   │   ├── Auth/{RegisterRequest,LoginRequest}.php
 │   │   ├── Users/UpdateRequest.php
-│   │   └── Projects/{CreateRequest,UpdateRequest}.php
+│   │   ├── Projects/{CreateRequest,UpdateRequest}.php
+│   │   └── Tasks/UploadCsvRequest.php
 │   └── Resources/{UserResource,ProjectResource}.php
-├── Enums/ProjectStatus.php
-├── Jobs/MailUserJob.php
-├── Mail/WelcomeMail.php
-├── Models/{User,Project}.php
+├── Jobs/{MailUserJob,ProcessCsvReportJob,SendImportMailJob}.php
+├── Mail/{WelcomeMail,ImportReadyMail}.php
+├── Models/{User,Project,Task,ImportReport}.php
 ├── Observers/UserObserver.php
 ├── Policies/{UserPolicy,ProjectPolicy}.php
 ├── Repositories/{UserRepository,ProjectRepository}.php
 ├── Services/{AuthService,UserService,ProjectService}.php
+├── Traits/TestTrait.php
 └── Providers/{AppServiceProvider,RepositoryServiceProvider,ServiceServiceProvider}.php
 database/
 ├── factories/{UserFactory,ProjectFactory}.php
+├── migrations/            # users, projects, tasks, import_reports, tokens, jobs, cache
 └── seeders/{DatabaseSeeder,UserSeeder,ProjectSeeder}.php
 resources/
 └── views/emails/welcome.blade.php
 routes/
 └── api.php
+tests/
+├── Feature/{Auth,Users,Projects}/…
+└── Unit/{Policies,Services}/…
 ```
 
-- **Controllers** handle HTTP only and delegate to services.
+- **Controllers** handle HTTP only and delegate to services (`AuthController`, `UsersController`,
+  `ProjectController`, `TaskController`).
 - **Services** hold business logic (`AuthService`, `UserService`, `ProjectService`);
   `AuthService::register` runs inside a DB transaction.
 - **Repositories** encapsulate all Eloquent/database access (`UserRepository`, `ProjectRepository`).
 - **Policies** authorize per-record ownership (`UserPolicy`, `ProjectPolicy`).
-- **Enums** — `ProjectStatus` (`active`/`archived`) is the single source of truth, reused by the
-  model cast, the `status` validation rule (`Rule::enum`), and the factory.
-- **Mail / Observers / Jobs** — `UserObserver` reacts to the `User` `created` event and dispatches
-  the queued `MailUserJob`, which sends `WelcomeMail` (`resources/views/emails/welcome.blade.php`).
+- **Enums** — `ProjectStatus` (`active`/`archived`) and `ImportReportStatus`
+  (`pending`/`success`/`failed`) are the single source of truth, reused by model casts,
+  validation (`Rule::enum`), and factories.
+- **Mail / Observers / Jobs** — `UserObserver` dispatches the queued `MailUserJob` (welcome email)
+  on user creation; the CSV import stores an `ImportReport` and runs `ProcessCsvReportJob`, which
+  in turn queues `SendImportMailJob` → `ImportReadyMail` when the import completes.
 - **Service Providers** bind interfaces to implementations for dependency injection
   (`RepositoryServiceProvider`, `ServiceServiceProvider`).
