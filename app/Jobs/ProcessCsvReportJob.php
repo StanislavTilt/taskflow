@@ -52,8 +52,6 @@ class ProcessCsvReportJob implements ShouldQueue
             );
         });
         $this->report->update(['status' => ImportReportStatus::Success]);
-
-        SendImportMailJob::dispatch($this->report);
     }
 
     private function parseFile()
