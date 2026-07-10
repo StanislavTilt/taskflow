@@ -29,14 +29,4 @@ class CsvParser
         }
         return $results;
     }
-
-    private function processRecord($record){
-        if(in_array($record['status'], ProjectStatus::cases()))
-        {
-            return $record;
-        }
-        $record['status'] = ProjectStatus::Active;
-        return $record;
-    }
-
 }

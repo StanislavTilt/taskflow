@@ -25,8 +25,8 @@ class ProcessCsvReportJob implements ShouldQueue
      * Create a new job instance.
      */
     public function __construct(
-        private readonly ImportReport $report,
-        private readonly Project $project,
+        public readonly ImportReport $report,
+        public readonly Project $project,
     )
     {}
 

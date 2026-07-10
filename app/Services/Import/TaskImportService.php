@@ -18,10 +18,11 @@ class TaskImportService
 
     public function buildRows(string $content, Project $project, int $user_id) : array
     {
-        return array_map(
-            fn(array $row) => $this->toTaskRow($row, $project, $user_id),
-            $this->parser->parse($content)
-        );
+        return collect($this->parser->parse($content))
+            ->filter(fn (array $row) => $this->isValid($row))
+            ->map(fn (array $row) => $this->toTaskRow($row, $project, $user_id))
+            ->values()
+            ->all();
     }
 
     public function toTaskRow(array $row, Project $project, int $user_id) : array
@@ -31,10 +32,16 @@ class TaskImportService
             'project_id' => $project->id,
             'name' => $row['name'] ?? null,
             'description' => $row['description'] ?? null,
-            'status' => $status,
+            'status' => ProjectStatus::from($row['status']),
             'created_by_id' => $user_id,
             'created_at' => now(),
             'updated_at' => now(),
         ];
     }
+    private function isValid(array $row): bool
+    {
+        return ! empty($row['name'])
+            && ProjectStatus::tryFrom($row['status'] ?? '') !== null;
+    }
+
 }
