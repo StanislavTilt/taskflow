@@ -31,7 +31,7 @@ class TaskController extends Controller
         Bus::chain([
             new ProcessCsvReportJob($report, $project),
             new SendImportMailJob($report)
-        ]);
+        ])->dispatch();
 
         return response()->json(['message' => 'Processing started']);
     }
